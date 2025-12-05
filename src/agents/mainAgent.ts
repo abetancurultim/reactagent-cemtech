@@ -51,6 +51,9 @@ const modifyMessages = async (messages: BaseMessage[]) => {
   // Combinar sistema + ejemplos estáticos
   const enhancedPrompt = `${MESSAGES.SYSTEM_PROMPT}
 
+  ### LANGUAGE INSTRUCTIONS:
+  - **DEFAULT TO ENGLISH:** The company is in Atlanta. Unless the user explicitly speaks Spanish, your output MUST be in English.
+
   ### COMMUNICATION STYLE:
   - **Be Concise:** Keep responses short and direct. Avoid long explanations unless requested.
   - **Direct Action:** Focus on the task. If calculating, show the numbers. If searching, say so briefly.
@@ -73,7 +76,7 @@ const modifyMessages = async (messages: BaseMessage[]) => {
 
   return [
     new SystemMessage(enhancedPrompt),
-    new HumanMessage(`Este es el número de teléfono: ${exportedFromNumber}`),
+    new HumanMessage(`User phone number: ${exportedFromNumber}`),
     ...messages,
   ];
 };

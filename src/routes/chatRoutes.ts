@@ -90,8 +90,8 @@ const MessagingResponse = twilio.twiml.MessagingResponse; // mandar un texto sim
 // ----------
 // const accountSid = process.env.TWILIO_ACCOUNT_SID;
 // const authToken = process.env.TWILIO_AUTH_TOKEN;
-const accountSid = process.env.TWILIO_ULTIM_ACCOUNT_SID;
-const authToken = process.env.TWILIO_ULTIM_AUTH_TOKEN;
+const accountSid = process.env.TWILIO_ACCOUNT_SID;
+const authToken = process.env.TWILIO_AUTH_TOKEN;
 // ---------
 const client = twilio(accountSid, authToken); // mandar un texto con media
 const openai = new OpenAI({
@@ -329,18 +329,18 @@ router.post("/cemtech/receive-message", async (req, res) => {
             file,
             model: "whisper-1",
             prompt:
-              "Por favor, transcribe el audio y asegúrate de escribir los números exactamente como se pronuncian, sin espacios, comas, ni puntos. Por ejemplo, un número de documento   debe ser transcrito como 123456789.",
+              "Please transcribe the audio. Write numbers exactly as spoken, without spaces, commas, or dots. For example, a document number should be transcribed as 123456789.",
           });
 
           const { text } = transcription;
-          incomingMessage = text || "Audio recibido"; // Fallback si no hay transcripción
+          incomingMessage = text || "Audio received"; // Fallback if no transcription
           console.log(
             "Audio transcription successful:",
             text ? "✅" : "⚠️ (empty)"
           );
         } catch (transcriptionError) {
           console.error("Error in transcription:", transcriptionError);
-          incomingMessage = "Audio recibido (no se pudo transcribir)";
+          incomingMessage = "Audio received (transcription failed)";
         }
 
         // Subir el audio original a Firebase Storage
@@ -450,7 +450,7 @@ router.post("/cemtech/receive-message", async (req, res) => {
           errorMessage:
             error instanceof Error ? error.message : "Unknown error",
         });
-        incomingMessage = "Audio recibido (error en procesamiento)";
+        incomingMessage = "Audio received (processing error)";
         audioUrl = "";
         // No enviar respuesta aquí, continuar con el flujo
       }
@@ -823,7 +823,7 @@ router.post("/cemtech/receive-message", async (req, res) => {
           errorMessage:
             error instanceof Error ? error.message : "Unknown error",
         });
-        incomingMessage = "Contacto recibido (error en procesamiento)";
+        incomingMessage = "Contact received (processing error)";
         vCardUrl = "";
       }
     } else if (req.body.MediaContentType0 && req.body.MediaUrl0) {
@@ -1144,7 +1144,7 @@ router.post("/cemtech/receive-message", async (req, res) => {
 
         incomingMessage =
           req.body.Body ||
-          `Archivo ${detectedFileType} recibido: ${originalFileName}`;
+          `${detectedFileType} file received: ${originalFileName}`;
       } catch (error) {
         console.error("❌ Error processing file:", error);
         console.error("Error details:", {
@@ -1155,12 +1155,12 @@ router.post("/cemtech/receive-message", async (req, res) => {
             error instanceof Error ? error.message : "Unknown error",
         });
 
-        incomingMessage = "Archivo recibido (error en procesamiento)";
+        incomingMessage = "File received (processing error)";
         // No establecer documentUrl si hubo error
         documentUrl = "";
       }
     } else {
-      incomingMessage = req.body.Body || "Mensaje recibido";
+      incomingMessage = req.body.Body || "Message received";
     }
 
     // Capturar el SID del mensaje entrante de Twilio
