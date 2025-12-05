@@ -67,13 +67,25 @@ export const searchCatalogTool = tool(
 
 // 2. Create Quote Tool
 export const createQuoteTool = tool(
-  async ({ client_number, project_name }: { client_number: string; project_name: string }) => {
+  async ({
+    client_number,
+    project_name,
+    client_name,
+    client_email,
+  }: {
+    client_number: string;
+    project_name: string;
+    client_name: string;
+    client_email: string;
+  }) => {
     const { data, error } = await supabase
       .from(TABLES.QUOTES)
       .insert([
         {
           client_number,
           project_name,
+          client_name,
+          client_email,
           status: "draft",
         },
       ])
@@ -88,10 +100,17 @@ export const createQuoteTool = tool(
   },
   {
     name: "create_quote",
-    description: "Create a new empty quote for a client. Returns the Quote ID.",
+    description:
+      "Create a new empty quote for a client. Returns the Quote ID. Requires client name and email.",
     schema: z.object({
-      client_number: z.string().describe("The client's phone number or identifier."),
-      project_name: z.string().describe("A short name for the project (e.g., 'Smith Driveway')."),
+      client_number: z
+        .string()
+        .describe("The client's phone number or identifier."),
+      project_name: z
+        .string()
+        .describe("A short name for the project (e.g., 'Smith Driveway')."),
+      client_name: z.string().describe("The full name of the client."),
+      client_email: z.string().describe("The email address of the client."),
     }),
   }
 );
@@ -121,37 +140,66 @@ export const addLineItemTool = tool(
     console.log(`[addLineItemTool] Input: quote_id=${quote_id}, parent_line_id=${parent_line_id}, description=${description}`);
 
     let finalParentId = parent_line_id;
+    const uuidRegex =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
     if (parent_line_id) {
-      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
       const isUuid = uuidRegex.test(parent_line_id);
-      console.log(`[addLineItemTool] parent_line_id '${parent_line_id}' is UUID? ${isUuid}`);
+      console.log(
+        `[addLineItemTool] parent_line_id '${parent_line_id}' is UUID? ${isUuid}`
+      );
 
       if (!isUuid) {
-        console.log(`[addLineItemTool] Searching for parent by name: ${parent_line_id} in quote ${quote_id}`);
+        console.log(
+          `[addLineItemTool] Searching for parent by name: ${parent_line_id} in quote ${quote_id}`
+        );
         // Try to find the parent by description
+        // CRITICAL: Only search for top-level items (parent_line_id is null) to avoid matching children.
         const { data: lines, error: searchError } = await supabase
           .from(TABLES.QUOTE_LINES)
           .select("id, description")
           .eq("quote_id", quote_id)
+          .is("parent_line_id", null)
           .ilike("description", `%${parent_line_id}%`)
           .limit(1);
 
         if (searchError) {
-            console.error(`[addLineItemTool] Search error: ${searchError.message}`);
+          console.error(
+            `[addLineItemTool] Search error: ${searchError.message}`
+          );
         }
-        
+
         if (lines && lines.length > 0) {
-             console.log(`[addLineItemTool] Found parent: ${JSON.stringify(lines[0])}`);
-             finalParentId = lines[0].id;
+          console.log(
+            `[addLineItemTool] Found parent: ${JSON.stringify(lines[0])}`
+          );
+          finalParentId = lines[0].id;
         } else {
-             console.warn(`[addLineItemTool] No parent found for name '${parent_line_id}'`);
-             return `Error: Parent line item '${parent_line_id}' is not a valid UUID and could not be found by name in quote ${quote_id}. Please use 'get_quote_details' to find the correct ID.`;
+          console.warn(
+            `[addLineItemTool] No parent found for name '${parent_line_id}'`
+          );
+          // Fallback: Try searching without the NULL check just in case, but warn.
+          // Or better, return a clear error asking the user to be more specific or use get_quote_details.
+          return `Error: Could not find a Parent Job named '${parent_line_id}' in quote ${quote_id}. Please verify the name or use 'get_quote_details' to get the exact ID.`;
         }
       }
     }
 
-    console.log(`[addLineItemTool] Final Parent ID to use: ${finalParentId}`);
+    // Validate item_catalog_id to prevent UUID errors
+    let finalCatalogId = item_catalog_id;
+    // If it's an empty string, undefined, or invalid UUID, force it to null.
+    if (!finalCatalogId || !uuidRegex.test(finalCatalogId)) {
+      if (finalCatalogId) {
+        console.warn(
+          `[addLineItemTool] Invalid or Empty UUID for item_catalog_id: '${finalCatalogId}'. Treating as custom item (null).`
+        );
+      }
+      finalCatalogId = null;
+    }
+
+    console.log(
+      `[addLineItemTool] Final Parent ID to use: ${finalParentId}, Final Catalog ID: ${finalCatalogId}`
+    );
 
     const { data, error } = await supabase
       .from(TABLES.QUOTE_LINES)
@@ -159,7 +207,7 @@ export const addLineItemTool = tool(
         {
           quote_id,
           parent_line_id: finalParentId || null,
-          item_catalog_id: item_catalog_id || null,
+          item_catalog_id: finalCatalogId || null,
           description,
           quantity,
           unit_price,

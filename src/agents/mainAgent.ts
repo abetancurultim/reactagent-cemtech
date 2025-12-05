@@ -61,7 +61,7 @@ const modifyMessages = async (messages: BaseMessage[]) => {
   3. **Missing Items Strategy (IMPORTANT):** If you cannot find an item in the catalog (like "Gravel" or "Forms"), DO NOT STOP. 
      - You are an expert estimator. **Create a custom line item** using your knowledge of market rates.
      - Use the 'add_line_item' tool with the description and your estimated price.
-     - Leave 'item_catalog_id' as null for these custom items.
+     - **CRITICAL:** Leave 'item_catalog_id' EMPTY (undefined/null) for custom items. Do NOT put the name of the item there.
      - **LINKING TO PARENT:** If adding an item to an existing job (e.g., adding Gravel to the Ramps section), you MUST provide the correct 'parent_line_id'. If you don't know it, use 'get_quote_details' first to find the ID of the parent section.
      - Inform the user: "Added [Item Name] based on market estimate as it wasn't in the catalog."
   4. **Goal:** Always produce a draft quote, even if some items are custom/estimated.
