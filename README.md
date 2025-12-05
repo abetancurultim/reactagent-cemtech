@@ -2,7 +2,7 @@
 
 Este proyecto es un **Agente de Inteligencia Artificial para WhatsApp** diseñado para **Cemtech Enterprise Inc.** Su función principal es actuar como un "Estimador Senior", asistiendo a los representantes de ventas en la creación de cotizaciones de construcción (concreto, demolición, etc.) de manera conversacional, rápida y precisa.
 
-El sistema utiliza **LangChain**, **OpenAI (GPT-4)**, **Supabase** (Base de datos), **Firebase** (Almacenamiento) y **Twilio** (WhatsApp). Además, implementa una arquitectura **Multi-Asesor** que permite manejar múltiples números de teléfono y contextos de memoria aislados.
+El sistema utiliza **LangChain**, **OpenAI (GPT-4.1)**, **Supabase** (Base de datos), **Firebase** (Almacenamiento) y **Twilio** (WhatsApp).
 
 ---
 
@@ -84,11 +84,9 @@ ELEVENLABS_API_KEY=...
 
 ### Twilio (WhatsApp)
 ```env
-# Credenciales principales (o específicas de la cuenta Ultim)
+# Credenciales principales
 TWILIO_ACCOUNT_SID=...
 TWILIO_AUTH_TOKEN=...
-TWILIO_ULTIM_ACCOUNT_SID=...
-TWILIO_ULTIM_AUTH_TOKEN=...
 ```
 
 ### Firebase (Almacenamiento de PDFs y Audios)
@@ -137,6 +135,7 @@ El sistema depende de las siguientes tablas relacionales:
 3.  **`quotes`**: Cabecera de las cotizaciones (Cliente, Proyecto, Estado, URL PDF).
 4.  **`quote_lines`**: Líneas de la cotización. Soporta jerarquía mediante `parent_line_id`.
 5.  **`chat_history`**: Historial de conversaciones para contexto.
+6.  **`messages`**: Registro de todos los mensajes. Se vinculan a una conversación.
 
 ---
 
