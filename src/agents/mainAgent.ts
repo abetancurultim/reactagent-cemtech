@@ -9,6 +9,7 @@ import {
 import { MemorySaver } from "@langchain/langgraph";
 import {
   searchCatalogTool,
+  searchQuotesTool,
   createQuoteTool,
   addLineItemTool,
   getQuoteDetailsTool,
@@ -34,6 +35,7 @@ const llm = new ChatOpenAI({
 
 const tools = [
   searchCatalogTool,
+  searchQuotesTool,
   createQuoteTool,
   addLineItemTool,
   getQuoteDetailsTool,
@@ -69,9 +71,10 @@ const modifyMessages = async (messages: BaseMessage[]) => {
      - Inform the user: "Added [Item Name] based on market estimate as it wasn't in the catalog."
   4. **Goal:** Always produce a draft quote, even if some items are custom/estimated.
   5. **Scope of Work (PDF):** When creating a **Parent Job** (using 'add_line_item' with no parent_id), ALWAYS provide a 'scope_of_work' description. This text will appear in the final PDF under the title. Example: "Includes saw cutting, demolition, removal of debris, and pouring back 4000PSI concrete."
-  6. **Finalizing:** When the user accepts the quote, use 'generate_pdf' to create the document and share the link.
+  6. **Finalizing:** When the user accepts the quote, use 'generate_pdf' to create the document. **CRITICAL:** You MUST output the raw URL of the PDF in your response (e.g., "https://..."). Do NOT use markdown links like [Download](url). WhatsApp does not support them. Just paste the full URL.
   7. **Handling IDs (CRITICAL):** IDs are ALWAYS 36-character UUIDs (e.g., "550e8400-e29b..."). NEVER use a name (like "Curbs") as an ID. If you need to add an item to "Curbs", you MUST run 'get_quote_details' first, find the line item named "Curbs", copy its UUID, and use that as 'parent_line_id'.
   8. **Error Recovery:** If you get an error saying "invalid input syntax for type uuid", it means you sent a name instead of an ID. STOP. Call 'get_quote_details' to get the list of items and their IDs. Find the correct ID for the parent item. Then call 'add_line_item' again with the correct UUID.
+  9. **Searching Quotes:** If a user asks to see their previous quotes or modify an existing one, use 'search_quotes' with their name. Present the list of found quotes (Project Name, Date, Total) and ask which one they want to work on.
   `;
 
   return [
