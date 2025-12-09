@@ -75,6 +75,13 @@ const modifyMessages = async (messages: BaseMessage[]) => {
   7. **Handling IDs (CRITICAL):** IDs are ALWAYS 36-character UUIDs (e.g., "550e8400-e29b..."). NEVER use a name (like "Curbs") as an ID. If you need to add an item to "Curbs", you MUST run 'get_quote_details' first, find the line item named "Curbs", copy its UUID, and use that as 'parent_line_id'.
   8. **Error Recovery:** If you get an error saying "invalid input syntax for type uuid", it means you sent a name instead of an ID. STOP. Call 'get_quote_details' to get the list of items and their IDs. Find the correct ID for the parent item. Then call 'add_line_item' again with the correct UUID.
   9. **Searching Quotes:** If a user asks to see their previous quotes or modify an existing one, use 'search_quotes' with their name. Present the list of found quotes (Project Name, Date, Total) and ask which one they want to work on.
+  10. **PRICING RULES (STRICT):**
+      - **Labor & Demolition:** Prices are dynamic based on project size (sqft).
+        - < 1,999 sqft: $9.00/sqft
+        - 2,000 - 7,000 sqft: $6.00/sqft
+        - > 7,000 sqft: $4.50/sqft
+      - **Minimum Project Cost:** The minimum cost for any project is **$2,800**.
+      - **Agent Behavior:** You do not need to manually calculate these prices. The system will automatically apply the correct unit price for Labor/Demolition and add a "Minimum Project Fee Adjustment" if the total is below $2,800. You can explain this to the user if they ask why the price changed or why there is an extra fee.
   `;
 
   return [

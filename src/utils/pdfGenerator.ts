@@ -5,6 +5,7 @@ import { storage } from "../config/firebase.js";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import fs from "fs";
 import path from "path";
+import { MINIMUM_PROJECT_COST } from './pricing.js';
 
 const fonts = {
   Roboto: {
@@ -68,7 +69,25 @@ export async function generateQuotePDF(quoteId: string): Promise<string> {
     };
   });
 
-  const grandTotal = itemsToPrint.reduce((sum: number, item: any) => sum + item.line_total, 0);
+  let grandTotal = itemsToPrint.reduce((sum: number, item: any) => sum + item.line_total, 0);
+
+  // --- MINIMUM COST ADJUSTMENT ---
+  if (grandTotal < MINIMUM_PROJECT_COST) {
+      const adjustment = MINIMUM_PROJECT_COST - grandTotal;
+      console.log(`[PDFGenerator] Grand Total ($${grandTotal}) is below minimum ($${MINIMUM_PROJECT_COST}). Adding adjustment of $${adjustment}.`);
+      
+      itemsToPrint.push({
+          description: "Minimum Project Fee Adjustment",
+          scope: "Adjustment to meet the minimum project requirement of $2,800.",
+          quantity: 1,
+          unit: "Fee",
+          unit_cost: adjustment,
+          line_total: adjustment
+      });
+
+      grandTotal = MINIMUM_PROJECT_COST;
+  }
+  // -------------------------------
 
   // Fetch Logo
   const logoUrl = 'https://firebasestorage.googleapis.com/v0/b/ultim-admin-dashboard.appspot.com/o/cemtech%2Flogo_cemtech.png?alt=media&token=443ea967-ac7f-4b81-b4b6-d1e4e7c7978b';

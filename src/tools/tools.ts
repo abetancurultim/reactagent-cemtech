@@ -5,6 +5,7 @@ import { searchConversations, searchVectors } from "../utils/retrievers.js";
 import { searchProducts, supabase } from "../utils/functions.js";
 import { TABLES } from "../config/tables.js";
 import { generateQuotePDF } from "../utils/pdfGenerator.js";
+import { getDynamicDemolitionPrice, getDynamicLaborPrice, shouldApplyDynamicPricing } from "../utils/pricing.js";
 
 export const retrieverTool = tool(
   async ({ query }: { query: string }) => {
@@ -232,6 +233,22 @@ export const addLineItemTool = tool(
       `[addLineItemTool] Final Parent ID to use: ${finalParentId}, Final Catalog ID: ${finalCatalogId}`
     );
 
+    // --- DYNAMIC PRICING LOGIC START ---
+    let finalUnitPrice = unit_price;
+    const pricingType = shouldApplyDynamicPricing(description);
+    
+    if (pricingType) {
+      console.log(`[addLineItemTool] Detected dynamic pricing item: ${pricingType}`);
+      if (pricingType === 'labor') {
+        finalUnitPrice = getDynamicLaborPrice(quantity);
+        console.log(`[addLineItemTool] Applied Dynamic Labor Price: $${finalUnitPrice} for ${quantity} sqft`);
+      } else if (pricingType === 'demolition') {
+        finalUnitPrice = getDynamicDemolitionPrice(quantity);
+        console.log(`[addLineItemTool] Applied Dynamic Demolition Price: $${finalUnitPrice} for ${quantity} sqft`);
+      }
+    }
+    // --- DYNAMIC PRICING LOGIC END ---
+
     const { data, error } = await supabase
       .from(TABLES.QUOTE_LINES)
       .insert([
@@ -241,8 +258,8 @@ export const addLineItemTool = tool(
           item_catalog_id: finalCatalogId || null,
           description,
           quantity,
-          unit_price,
-          subtotal: quantity * unit_price,
+          unit_price: finalUnitPrice,
+          subtotal: quantity * finalUnitPrice,
           scope_of_work: scope_of_work || null,
         },
       ])
@@ -415,18 +432,44 @@ export const updateLineItemTool = tool(
 
     let newQuantity = currentItem.quantity;
     let newPrice = currentItem.unit_price;
+    let newDescription = currentItem.description;
 
     if (quantity !== undefined) {
       updates.quantity = quantity;
       newQuantity = quantity;
+    }
+    if (description !== undefined) {
+        newDescription = description;
     }
     if (unit_price !== undefined) {
       updates.unit_price = unit_price;
       newPrice = unit_price;
     }
 
+    // --- DYNAMIC PRICING LOGIC START (UPDATE) ---
+    // Check if we need to re-evaluate price based on new quantity or description
+    const pricingType = shouldApplyDynamicPricing(newDescription);
+    if (pricingType && (quantity !== undefined || description !== undefined)) {
+         // If it's a dynamic price item, we FORCE the price based on the quantity (sqft)
+         // ignoring the user-provided unit_price if it conflicts with the rule, 
+         // OR we could just overwrite it. Let's overwrite to enforce the rule.
+         let calculatedPrice = newPrice;
+         if (pricingType === 'labor') {
+            calculatedPrice = getDynamicLaborPrice(newQuantity);
+         } else if (pricingType === 'demolition') {
+            calculatedPrice = getDynamicDemolitionPrice(newQuantity);
+         }
+
+         if (calculatedPrice !== newPrice) {
+             console.log(`[updateLineItemTool] Enforcing dynamic price: Was ${newPrice}, Now ${calculatedPrice} for ${newQuantity} sqft`);
+             newPrice = calculatedPrice;
+             updates.unit_price = newPrice;
+         }
+    }
+    // --- DYNAMIC PRICING LOGIC END ---
+
     // Recalculate subtotal if quantity or price changed
-    if (quantity !== undefined || unit_price !== undefined) {
+    if (quantity !== undefined || unit_price !== undefined || updates.unit_price !== undefined) {
       updates.subtotal = newQuantity * newPrice;
     }
 
