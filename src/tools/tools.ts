@@ -26,7 +26,7 @@ export const retrieverTool = tool(
 export const searchCatalogTool = tool(
   async ({ query, category }: { query: string; category?: string }) => {
     let queryBuilder = supabase
-      .from(TABLES.ITEMS_CATALOG)
+      .from("items_catalog")
       .select("*")
       .ilike("name", `%${query}%`);
 
@@ -169,6 +169,18 @@ export const addLineItemTool = tool(
     // If it's a child item (resource), parent_line_id is required.
     // If it's a parent item (job), parent_line_id is null.
 
+    // --- DEBUG LOGS START ---
+    console.log(`[DEBUG] addLineItemTool INVOCADA`);
+    console.log(`[DEBUG] Params: quote_id=${quote_id}, item_catalog_id=${item_catalog_id}, parent=${parent_line_id}`);
+
+    // Verificamos si TABLES está definido para descartar error de importación
+    if (!TABLES || !TABLES.QUOTE_LINES || !TABLES.ITEMS_CATALOG) {
+      console.error("[CRITICAL ERROR] TABLES constant is undefined or missing properties inside addLineItemTool!");
+      console.error("Imported TABLES:", TABLES);
+      return "Error interno: Configuración de tablas no cargada correctamente.";
+    }
+    // --- DEBUG LOGS END ---
+
     console.log(`[addLineItemTool] Input: quote_id=${quote_id}, parent_line_id=${parent_line_id}, description=${description}`);
 
     let finalParentId = parent_line_id;
@@ -188,7 +200,7 @@ export const addLineItemTool = tool(
         // Try to find the parent by description
         // CRITICAL: Only search for top-level items (parent_line_id is null) to avoid matching children.
         const { data: lines, error: searchError } = await supabase
-          .from(TABLES.QUOTE_LINES)
+          .from("quote_lines")
           .select("id, description")
           .eq("quote_id", quote_id)
           .is("parent_line_id", null)
@@ -227,6 +239,23 @@ export const addLineItemTool = tool(
         );
       }
       finalCatalogId = null;
+    } else {
+      // Consultamos si el ID existe realmente en el catálogo
+      console.log(`[DEBUG] Verificando existencia de UUID: ${finalCatalogId}`);
+      const { count, error: checkError } = await supabase
+        .from("items_catalog")
+        .select("id", { count: "exact", head: true })
+        .eq("id", finalCatalogId);
+
+      // Si hay error o el conteo es 0, el ID es inventado por la IA
+      if (checkError || count === 0) {
+        console.warn(
+          `[addLineItemTool] UUID '${finalCatalogId}' has valid format but DOES NOT EXIST in catalog. Treating as custom item.`
+        );
+        finalCatalogId = null;
+      } else {
+        console.log(`[DEBUG] UUID '${finalCatalogId}' confirmado válido.`);
+      }
     }
 
     console.log(
@@ -250,7 +279,7 @@ export const addLineItemTool = tool(
     // --- DYNAMIC PRICING LOGIC END ---
 
     const { data, error } = await supabase
-      .from(TABLES.QUOTE_LINES)
+      .from("quote_lines")
       .insert([
         {
           quote_id,
@@ -279,12 +308,12 @@ export const addLineItemTool = tool(
     description: "Add a line item to a quote. Can be a Parent Job (no parent_line_id) or a Child Resource (requires parent_line_id).",
     schema: z.object({
       quote_id: z.string().describe("The ID of the active quote."),
-      parent_line_id: z.string().optional().describe("The ID of the parent line item if this is a resource/child. Leave empty for main jobs."),
-      item_catalog_id: z.string().optional().describe("The ID from the catalog if applicable."),
+      parent_line_id: z.string().nullable().optional().describe("The ID of the parent line item..."),
+      item_catalog_id: z.string().nullable().optional().describe("The ID from the catalog if applicable."),
       description: z.string().describe("Description of the item or job."),
       quantity: z.coerce.number().describe("Quantity required."),
       unit_price: z.coerce.number().describe("Unit price for this specific quote line."),
-      scope_of_work: z.string().optional().describe("Detailed scope of work for Parent Jobs (e.g., 'Includes demo, pouring...'). Not needed for child items."),
+      scope_of_work: z.string().nullable().optional().describe("Detailed scope of work..."),
     }),
   }
 );
@@ -307,7 +336,7 @@ export const getQuoteDetailsTool = tool(
 
     // Fetch lines
     const { data: lines, error: linesError } = await supabase
-      .from(TABLES.QUOTE_LINES)
+      .from("quote_lines")
       .select(`
         *,
         items_catalog (
@@ -359,7 +388,7 @@ export const negotiatePriceTool = tool(
     console.log(`[negotiatePriceTool] Input: line_id=${line_id}, new_unit_price=${new_unit_price}`);
     // First get the current quantity to update subtotal
     const { data: line, error: fetchError } = await supabase
-      .from(TABLES.QUOTE_LINES)
+      .from("quote_lines")
       .select("quantity")
       .eq("id", line_id)
       .single();
@@ -372,7 +401,7 @@ export const negotiatePriceTool = tool(
     const newSubtotal = line.quantity * new_unit_price;
 
     const { data, error } = await supabase
-      .from(TABLES.QUOTE_LINES)
+      .from("quote_lines")
       .update({ unit_price: new_unit_price, subtotal: newSubtotal })
       .eq("id", line_id)
       .select()
@@ -415,7 +444,7 @@ export const updateLineItemTool = tool(
 
     // 1. Get current item to calculate new subtotal if needed
     const { data: currentItem, error: fetchError } = await supabase
-      .from(TABLES.QUOTE_LINES)
+      .from("quote_lines")
       .select("*")
       .eq("id", line_id)
       .single();
@@ -475,7 +504,7 @@ export const updateLineItemTool = tool(
 
     // 3. Perform update
     const { data, error } = await supabase
-      .from(TABLES.QUOTE_LINES)
+      .from("quote_lines")
       .update(updates)
       .eq("id", line_id)
       .select()
@@ -509,7 +538,7 @@ export const deleteLineItemTool = tool(
 
     // Check if it has children first (optional, but good for logging)
     const { count, error: countError } = await supabase
-      .from(TABLES.QUOTE_LINES)
+      .from("quote_lines")
       .select("*", { count: "exact", head: true })
       .eq("parent_line_id", line_id);
 
@@ -521,7 +550,7 @@ export const deleteLineItemTool = tool(
     }
 
     const { error } = await supabase
-      .from(TABLES.QUOTE_LINES)
+      .from("quote_lines")
       .delete()
       .eq("id", line_id);
 
