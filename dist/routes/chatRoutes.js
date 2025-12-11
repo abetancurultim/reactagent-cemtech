@@ -6,8 +6,8 @@ import fetch from "node-fetch";
 import { OpenAI, toFile } from "openai";
 import twilio from "twilio";
 import NodeCache from 'node-cache'; // Importar caché
-import { initializeApp } from "firebase/app";
-import { getDownloadURL, getStorage, ref, uploadBytesResumable, } from "firebase/storage";
+import { getDownloadURL, ref, uploadBytesResumable, } from "firebase/storage";
+import { storage } from "../config/firebase.js";
 import { ElevenLabsClient } from "elevenlabs";
 import path from "path";
 import axios from "axios";
@@ -16,11 +16,9 @@ import fs from "fs";
 import { fileURLToPath } from "url";
 import { saveChatHistory, saveTemplateChatHistory, updateMessageTwilioSid, } from "../utils/saveHistoryDb.js";
 import { getAvailableChatOn } from "../utils/getAvailableChatOn.js";
-import { getAvailableForAudio } from "../utils/getAvailableForAudio.js";
 import { appWithMemory } from "../agents/mainAgent.js";
 import { getCampaignOrigin } from "../utils/campaignDetector.js";
 import { supabase } from "../utils/saveHistoryDb.js";
-import { delay, getRandomDelay } from "../utils/delayFunctions.js";
 const router = express.Router();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -30,8 +28,8 @@ const MessagingResponse = twilio.twiml.MessagingResponse; // mandar un texto sim
 // ----------
 // const accountSid = process.env.TWILIO_ACCOUNT_SID;
 // const authToken = process.env.TWILIO_AUTH_TOKEN;
-const accountSid = process.env.TWILIO_ULTIM_ACCOUNT_SID;
-const authToken = process.env.TWILIO_ULTIM_AUTH_TOKEN;
+const accountSid = process.env.TWILIO_ACCOUNT_SID;
+const authToken = process.env.TWILIO_AUTH_TOKEN;
 // ---------
 const client = twilio(accountSid, authToken); // mandar un texto con media
 const openai = new OpenAI({
@@ -61,16 +59,7 @@ const getAdvisorByTwilioNumber = async (twilioNumber) => {
     }
     return advisor || null;
 };
-const firebaseConfig = {
-    apiKey: process.env.FIREBASE_API_KEY,
-    authDomain: process.env.FIREBASE_AUTH_DOMAIN,
-    projectId: process.env.FIREBASE_PROJECT_ID,
-    storageBucket: process.env.FIREBASE_STORAGE_BUCKET,
-    messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID,
-    appId: process.env.FIREBASE_APP_ID,
-};
-const app = initializeApp(firebaseConfig);
-const storage = getStorage();
+// Firebase initialized in config/firebase.ts
 const createAudioStreamFromText = async (text) => {
     const audioStream = await elevenlabsClient.generate({
         voice: "Andrea",
@@ -110,7 +99,7 @@ const fetchMediaWithRetry = async (url, options, retries = 3, delayMs = 1500) =>
     throw new Error("Unexpected error fetching media");
 };
 // Endpoint para procesar mensajes
-router.post("/asadores/receive-message", async (req, res) => {
+router.post("/cemtech/receive-message", async (req, res) => {
     const twiml = new MessagingResponse();
     const from = req.body.From;
     const to = req.body.To;
@@ -224,15 +213,15 @@ router.post("/asadores/receive-message", async (req, res) => {
                     const transcription = await openai.audio.transcriptions.create({
                         file,
                         model: "whisper-1",
-                        prompt: "Por favor, transcribe el audio y asegúrate de escribir los números exactamente como se pronuncian, sin espacios, comas, ni puntos. Por ejemplo, un número de documento   debe ser transcrito como 123456789.",
+                        prompt: "Please transcribe the audio. Write numbers exactly as spoken, without spaces, commas, or dots. For example, a document number should be transcribed as 123456789.",
                     });
                     const { text } = transcription;
-                    incomingMessage = text || "Audio recibido"; // Fallback si no hay transcripción
+                    incomingMessage = text || "Audio received"; // Fallback if no transcription
                     console.log("Audio transcription successful:", text ? "✅" : "⚠️ (empty)");
                 }
                 catch (transcriptionError) {
                     console.error("Error in transcription:", transcriptionError);
-                    incomingMessage = "Audio recibido (no se pudo transcribir)";
+                    incomingMessage = "Audio received (transcription failed)";
                 }
                 // Subir el audio original a Firebase Storage
                 const audioName = `audio_${Date.now()}_${uuidv4().slice(0, 8)}.${fileExtension}`;
@@ -299,7 +288,7 @@ router.post("/asadores/receive-message", async (req, res) => {
                     mediaContentType: req.body.MediaContentType0,
                     errorMessage: error instanceof Error ? error.message : "Unknown error",
                 });
-                incomingMessage = "Audio recibido (error en procesamiento)";
+                incomingMessage = "Audio received (processing error)";
                 audioUrl = "";
                 // No enviar respuesta aquí, continuar con el flujo
             }
@@ -562,7 +551,7 @@ router.post("/asadores/receive-message", async (req, res) => {
                     mediaContentType: req.body.MediaContentType0,
                     errorMessage: error instanceof Error ? error.message : "Unknown error",
                 });
-                incomingMessage = "Contacto recibido (error en procesamiento)";
+                incomingMessage = "Contact received (processing error)";
                 vCardUrl = "";
             }
         }
@@ -810,7 +799,7 @@ router.post("/asadores/receive-message", async (req, res) => {
                 console.log("File uploaded to Firebase successfully:", documentUrl);
                 incomingMessage =
                     req.body.Body ||
-                        `Archivo ${detectedFileType} recibido: ${originalFileName}`;
+                        `${detectedFileType} file received: ${originalFileName}`;
             }
             catch (error) {
                 console.error("❌ Error processing file:", error);
@@ -820,13 +809,13 @@ router.post("/asadores/receive-message", async (req, res) => {
                     fileName: req.body.MediaFileName0,
                     errorMessage: error instanceof Error ? error.message : "Unknown error",
                 });
-                incomingMessage = "Archivo recibido (error en procesamiento)";
+                incomingMessage = "File received (processing error)";
                 // No establecer documentUrl si hubo error
                 documentUrl = "";
             }
         }
         else {
-            incomingMessage = req.body.Body || "Mensaje recibido";
+            incomingMessage = req.body.Body || "Message received";
         }
         // Capturar el SID del mensaje entrante de Twilio
         const incomingMessageSid = req.body.MessageSid || req.body.SmsMessageSid || null;
@@ -929,7 +918,8 @@ router.post("/asadores/receive-message", async (req, res) => {
         advisor.id // advisor_id
         );
         //consultar si esta disponible para audios específico para este asesor
-        const isAvailableForAudio = await getAvailableForAudio(fromNumber, advisor.id);
+        // const isAvailableForAudio = await getAvailableForAudio(fromNumber, advisor.id);
+        const isAvailableForAudio = false; // Desactivado temporalmente: No enviar audios
         // Si la respuesta es menor a 400 caracteres && no contiene números, hacer TTS y enviar el audio
         if (responseMessage.length <= 400 &&
             !/\d/.test(responseMessage) &&
@@ -951,9 +941,9 @@ router.post("/asadores/receive-message", async (req, res) => {
                     throw new Error(`Upload failed: ${error.message}`);
                 }, async () => {
                     const audioUrl = await getDownloadURL(uploadTask.snapshot.ref);
-                    const randomDelay = getRandomDelay(15000, 25000); // Espera entre 15 y 25 segundos
-                    console.log(`⏳ Delaying audio response by ${randomDelay / 1000} seconds...`);
-                    await delay(randomDelay);
+                    // const randomDelay = getRandomDelay(15000, 25000); // Espera entre 15 y 25 segundos
+                    // console.log(`⏳ Delaying audio response by ${randomDelay / 1000} seconds...`);
+                    // await delay(randomDelay);
                     console.log("🎵 === SENDING AUDIO MESSAGE ===");
                     console.log("Audio FROM:", to, "TO:", from);
                     console.log("Asesor responsable:", advisor.name, `(${advisor.twilio_phone_number})`);
@@ -963,7 +953,7 @@ router.post("/asadores/receive-message", async (req, res) => {
                         from: to,
                         to: from,
                         mediaUrl: [audioUrl],
-                        statusCallback: `${statusCallbackUrl}/asadores/webhook/status`,
+                        statusCallback: `${statusCallbackUrl}/cemtech/webhook/status`,
                     });
                     // Actualizar el mensaje de la IA con el SID del audio enviado
                     if (messageId && message.sid) {
@@ -989,9 +979,9 @@ router.post("/asadores/receive-message", async (req, res) => {
                 for (let part of messageParts) {
                     if (part !== "") {
                         const partMessageId = await saveChatHistory(fromNumber, part, false, "");
-                        const randomDelay = getRandomDelay(15000, 25000); // Espera entre 15 y 25 segundos
-                        console.log(`⏳ Delaying audio response by ${randomDelay / 1000} seconds...`);
-                        await delay(randomDelay);
+                        // const randomDelay = getRandomDelay(15000, 25000); // Espera entre 15 y 25 segundos
+                        // console.log(`⏳ Delaying audio response by ${randomDelay / 1000} seconds...`);
+                        // await delay(randomDelay);
                         console.log("💬 === SENDING TEXT MESSAGE ===");
                         console.log("Text FROM:", to, "TO:", from);
                         console.log("Asesor responsable:", advisor.name, `(${advisor.twilio_phone_number})`);
@@ -1001,7 +991,7 @@ router.post("/asadores/receive-message", async (req, res) => {
                             body: part,
                             from: to,
                             to: from,
-                            statusCallback: `${statusCallbackUrl}/asadores/webhook/status`,
+                            statusCallback: `${statusCallbackUrl}/cemtech/webhook/status`,
                         });
                         console.log(part);
                         console.log("-------------------");
@@ -1013,9 +1003,9 @@ router.post("/asadores/receive-message", async (req, res) => {
             }
             else {
                 try {
-                    const randomDelay = getRandomDelay(15000, 25000); // Espera entre 15 y 25 segundos
-                    console.log(`⏳ Delaying audio response by ${randomDelay / 1000} seconds...`);
-                    await delay(randomDelay);
+                    // const randomDelay = getRandomDelay(15000, 25000); // Espera entre 15 y 25 segundos
+                    // console.log(`⏳ Delaying audio response by ${randomDelay / 1000} seconds...`);
+                    // await delay(randomDelay);
                     console.log("💬 === SENDING SINGLE TEXT MESSAGE ===");
                     console.log("Text FROM:", to, "TO:", from);
                     console.log("Asesor responsable:", advisor.name, `(${advisor.twilio_phone_number})`);
@@ -1025,7 +1015,7 @@ router.post("/asadores/receive-message", async (req, res) => {
                         body: responseMessage,
                         from: to,
                         to: from,
-                        statusCallback: `${statusCallbackUrl}/asadores/webhook/status`,
+                        statusCallback: `${statusCallbackUrl}/cemtech/webhook/status`,
                     });
                     console.log("Message sent successfully:", message.sid);
                     if (messageId && message.sid) {
@@ -1074,7 +1064,7 @@ router.post("/asadores/receive-message", async (req, res) => {
         }
     }
 });
-router.post("/asadores/chat-dashboard", async (req, res) => {
+router.post("/cemtech/chat-dashboard", async (req, res) => {
     try {
         const twiml = new MessagingResponse();
         const { clientNumber, newMessage, userName, fileName, advisorId, twilioPhoneNumber } = req.body;
@@ -1137,7 +1127,7 @@ router.post("/asadores/chat-dashboard", async (req, res) => {
                     // from: `whatsapp:+14155238886`,
                     from: `whatsapp:${twilioPhoneNumber}`,
                     mediaUrl: [audioUrl],
-                    statusCallback: `${statusCallbackUrl}/asadores/webhook/status`,
+                    statusCallback: `${statusCallbackUrl}/cemtech/webhook/status`,
                 });
                 // Actualizar con el SID de Twilio
                 if (messageId && message.sid) {
@@ -1165,7 +1155,7 @@ router.post("/asadores/chat-dashboard", async (req, res) => {
                 // from: `whatsapp:+14155238886`,
                 from: `whatsapp:${twilioPhoneNumber}`,
                 mediaUrl: [newMessage],
-                statusCallback: `${statusCallbackUrl}/asadores/webhook/status`,
+                statusCallback: `${statusCallbackUrl}/cemtech/webhook/status`,
             });
             // Actualizar con el SID de Twilio
             if (messageId && message.sid) {
@@ -1187,7 +1177,7 @@ router.post("/asadores/chat-dashboard", async (req, res) => {
                 from: `whatsapp:${twilioPhoneNumber}`,
                 to: `whatsapp:${clientNumber}`,
                 body: newMessage,
-                statusCallback: `${statusCallbackUrl}/asadores/webhook/status`,
+                statusCallback: `${statusCallbackUrl}/cemtech/webhook/status`,
             });
             // Actualizar con el SID de Twilio
             if (messageId && message.sid) {
@@ -1209,7 +1199,7 @@ router.post("/asadores/chat-dashboard", async (req, res) => {
     }
 });
 // Ruta para enviar una plantilla de WhatsApp
-router.post("/asadores/send-template", async (req, res) => {
+router.post("/cemtech/send-template", async (req, res) => {
     const { to, templateId, name, agentName, user, advisorId, twilioPhoneNumber } = req.body; // Agregar advisorId
     try {
         const message = await client.messages.create({
@@ -1220,12 +1210,12 @@ router.post("/asadores/send-template", async (req, res) => {
             contentSid: templateId,
             // messagingServiceSid: "MGe5ebd75ff86ad20dbe6c0c1d09bfc081",
             contentVariables: JSON.stringify({ 1: name, 2: agentName }),
-            statusCallback: `${statusCallbackUrl}/asadores/webhook/status`,
+            statusCallback: `${statusCallbackUrl}/cemtech/webhook/status`,
         });
         console.log("body", message.body);
         await new Promise((resolve) => setTimeout(resolve, 2000));
         // Traer el mensaje de la plantilla desde el endpoint /message/:sid con axios
-        const response = await axios.get(`https://ultim.online/asadores/message/${message.sid}`);
+        const response = await axios.get(`https://ultim.online/cemtech/message/${message.sid}`);
         console.log("response", response.data.message.body);
         // Guardar el mensaje en la base de datos con advisor específico
         const messageId = await saveTemplateChatHistory(to, response.data.message.body, false, "", user, advisorId // Pasar advisorId para asociar plantilla al asesor correcto
@@ -1248,7 +1238,7 @@ router.post("/asadores/send-template", async (req, res) => {
     }
 });
 // Ruta para obtener detalles de un mensaje específico por SID
-router.get("/asadores/message/:sid", async (req, res) => {
+router.get("/cemtech/message/:sid", async (req, res) => {
     const { sid } = req.params;
     try {
         const message = await client.messages(sid).fetch();
@@ -1262,7 +1252,7 @@ router.get("/asadores/message/:sid", async (req, res) => {
         });
     }
 });
-router.post("/asadores/webhook/status", async (req, res) => {
+router.post("/cemtech/webhook/status", async (req, res) => {
     try {
         const { MessageSid, MessageStatus, To, From, ErrorCode, ErrorMessage, Timestamp, } = req.body;
         console.log("📊 === TWILIO STATUS WEBHOOK ===");
@@ -1371,7 +1361,7 @@ router.post("/asadores/webhook/status", async (req, res) => {
     }
 });
 // Endpoint para obtener el historial completo de estados de un mensaje
-router.get("/asadores/message-status/:sid", async (req, res) => {
+router.get("/cemtech/message-status/:sid", async (req, res) => {
     try {
         const { sid } = req.params;
         // Obtener el mensaje actual
@@ -1411,10 +1401,10 @@ router.get("/asadores/message-status/:sid", async (req, res) => {
     }
 });
 // Ruta health check
-router.get("/asadores/health", (req, res) => {
+router.get("/cemtech/health", (req, res) => {
     res
         .status(200)
-        .json({ success: true, message: "Health check - Asadores corriendo" });
+        .json({ success: true, message: "Health check - Cemtech ReactAgent corriendo" });
 });
 export default router;
 export { exportedFromNumber };
