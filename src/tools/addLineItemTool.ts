@@ -9,7 +9,6 @@ import {
     shouldApplyDynamicPricing 
 } from "../utils/pricing.js";
 
-// 3. Add Line Item Tool (Hierarchical)
 export const addLineItemTool = tool(
   async ({
     quote_id,
@@ -28,8 +27,6 @@ export const addLineItemTool = tool(
     unit_price: number;
     scope_of_work?: string;
   }) => {
-    // If it's a child item (resource), parent_line_id is required.
-    // If it's a parent item (job), parent_line_id is null.
 
     // --- DEBUG LOGS START ---
     console.log(`[DEBUG] addLineItemTool INVOCADA`);
@@ -59,8 +56,7 @@ export const addLineItemTool = tool(
         console.log(
           `[addLineItemTool] Searching for parent by name: ${parent_line_id} in quote ${quote_id}`
         );
-        // Try to find the parent by description
-        // CRITICAL: Only search for top-level items (parent_line_id is null) to avoid matching children.
+        
         const { data: lines, error: searchError } = await supabase
           .from("quote_lines")
           .select("id, description")
@@ -84,16 +80,13 @@ export const addLineItemTool = tool(
           console.warn(
             `[addLineItemTool] No parent found for name '${parent_line_id}'`
           );
-          // Fallback: Try searching without the NULL check just in case, but warn.
-          // Or better, return a clear error asking the user to be more specific or use get_quote_details.
+          
           return `Error: Could not find a Parent Job named '${parent_line_id}' in quote ${quote_id}. Please verify the name or use 'get_quote_details' to get the exact ID.`;
         }
       }
     }
 
-    // Validate item_catalog_id to prevent UUID errors
     let finalCatalogId = item_catalog_id;
-    // If it's an empty string, undefined, or invalid UUID, force it to null.
     if (!finalCatalogId || !uuidRegex.test(finalCatalogId)) {
       if (finalCatalogId) {
         console.warn(
@@ -102,14 +95,12 @@ export const addLineItemTool = tool(
       }
       finalCatalogId = null;
     } else {
-      // Consultamos si el ID existe realmente en el catálogo
       console.log(`[DEBUG] Verificando existencia de UUID: ${finalCatalogId}`);
       const { count, error: checkError } = await supabase
         .from("items_catalog")
         .select("id", { count: "exact", head: true })
         .eq("id", finalCatalogId);
 
-      // Si hay error o el conteo es 0, el ID es inventado por la IA
       if (checkError || count === 0) {
         console.warn(
           `[addLineItemTool] UUID '${finalCatalogId}' has valid format but DOES NOT EXIST in catalog. Treating as custom item.`
@@ -124,7 +115,6 @@ export const addLineItemTool = tool(
       `[addLineItemTool] Final Parent ID to use: ${finalParentId}, Final Catalog ID: ${finalCatalogId}`
     );
 
-    // --- DYNAMIC PRICING LOGIC START ---
     let finalUnitPrice = unit_price;
     const pricingType = shouldApplyDynamicPricing(description);
     
@@ -138,7 +128,6 @@ export const addLineItemTool = tool(
         console.log(`[addLineItemTool] Applied Dynamic Demolition Price: $${finalUnitPrice} for ${quantity} sqft`);
       }
     }
-    // --- DYNAMIC PRICING LOGIC END ---
 
     const { data, error } = await supabase
       .from("quote_lines")
