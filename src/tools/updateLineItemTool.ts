@@ -7,7 +7,6 @@ import {
     shouldApplyDynamicPricing 
 } from "../utils/pricing.js";
 
-// 6. Update Line Item Tool (General Update)
 export const updateLineItemTool = tool(
   async ({
     line_id,
@@ -24,7 +23,6 @@ export const updateLineItemTool = tool(
   }) => {
     console.log(`[updateLineItemTool] Input: line_id=${line_id}, qty=${quantity}, desc=${description}, price=${unit_price}`);
 
-    // 1. Get current item to calculate new subtotal if needed
     const { data: currentItem, error: fetchError } = await supabase
       .from("quote_lines")
       .select("*")
@@ -36,7 +34,6 @@ export const updateLineItemTool = tool(
       return `Error fetching item: ${fetchError.message}`;
     }
 
-    // 2. Prepare updates
     const updates: any = {};
     if (description !== undefined) updates.description = description;
     if (scope_of_work !== undefined) updates.scope_of_work = scope_of_work;
@@ -58,7 +55,6 @@ export const updateLineItemTool = tool(
     }
 
     // --- DYNAMIC PRICING LOGIC START (UPDATE) ---
-    // Check if we need to re-evaluate price based on new quantity or description
     const pricingType = shouldApplyDynamicPricing(newDescription);
     if (pricingType && (quantity !== undefined || description !== undefined)) {
          // If it's a dynamic price item, we FORCE the price based on the quantity (sqft)
@@ -79,12 +75,10 @@ export const updateLineItemTool = tool(
     }
     // --- DYNAMIC PRICING LOGIC END ---
 
-    // Recalculate subtotal if quantity or price changed
     if (quantity !== undefined || unit_price !== undefined || updates.unit_price !== undefined) {
       updates.subtotal = newQuantity * newPrice;
     }
 
-    // 3. Perform update
     const { data, error } = await supabase
       .from("quote_lines")
       .update(updates)
