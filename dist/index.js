@@ -5,7 +5,7 @@ const app = express();
 app.options("*", cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-const PORT = process.env.PORT || 3026;
+const PORT = process.env.PORT || 3031;
 const allowedOrigins = [
     "http://localhost:5173",
     "https://ultim-admin-dashboard.web.app",

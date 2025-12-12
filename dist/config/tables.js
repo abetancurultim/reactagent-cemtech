@@ -5,4 +5,7 @@ console.log(process.env.MESSAGES_TABLE);
 export const TABLES = {
     CHAT_HISTORY: process.env.CHAT_HISTORY_TABLE || "chat_history",
     MESSAGES: process.env.MESSAGES_TABLE || "messages",
+    ITEMS_CATALOG: "items_catalog",
+    QUOTES: "quotes",
+    QUOTE_LINES: "quote_lines",
 };
