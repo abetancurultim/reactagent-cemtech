@@ -7,7 +7,7 @@ import { TABLES } from "../config/tables.js";
 export const getQuoteDetailsTool = tool(
   async ({ quote_id }: { quote_id: string }) => {
     console.log(`[getQuoteDetailsTool] Input: quote_id=${quote_id}`);
-    // Fetch quote info
+
     const { data: quote, error: quoteError } = await supabase
       .from(TABLES.QUOTES)
       .select("*")
@@ -19,7 +19,6 @@ export const getQuoteDetailsTool = tool(
       return `Error fetching quote: ${quoteError.message}`;
     }
 
-    // Fetch lines
     const { data: lines, error: linesError } = await supabase
       .from("quote_lines")
       .select(`
@@ -37,7 +36,6 @@ export const getQuoteDetailsTool = tool(
       return `Error fetching quote lines: ${linesError.message}`;
     }
 
-    // Organize hierarchically
     const parents = lines.filter((l: any) => !l.parent_line_id);
     const children = lines.filter((l: any) => l.parent_line_id);
 
@@ -49,7 +47,7 @@ export const getQuoteDetailsTool = tool(
         return {
           ...parent,
           children: myChildren,
-          calculated_total: childrenTotal > 0 ? childrenTotal : parent.subtotal // If parent has children, its cost is usually sum of children unless it's a flat fee
+          calculated_total: childrenTotal > 0 ? childrenTotal : parent.subtotal 
         };
       })
     };
