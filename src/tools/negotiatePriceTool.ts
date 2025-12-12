@@ -2,11 +2,10 @@ import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import { supabase } from "../utils/functions.js";
 
-// 5. Negotiate Price Tool
 export const negotiatePriceTool = tool(
   async ({ line_id, new_unit_price }: { line_id: string; new_unit_price: number }) => {
     console.log(`[negotiatePriceTool] Input: line_id=${line_id}, new_unit_price=${new_unit_price}`);
-    // First get the current quantity to update subtotal
+    
     const { data: line, error: fetchError } = await supabase
       .from("quote_lines")
       .select("quantity")
