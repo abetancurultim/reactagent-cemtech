@@ -10,17 +10,17 @@ import dotenv from "dotenv";
 dotenv.config();
 
 // 1. Configuración de Modelos
-// Scout: Rápido y barato para filtrar páginas basura (Electricidad, Plomería)
+// Scout: Este modelo se encargará de filtrar páginas basura (Electricidad, Plomería)
 const visionScoutModel = new ChatOpenAI({
   modelName: "gpt-4o-mini", 
   maxTokens: 150,
   temperature: 0,
 });
 
-// Analyst: Potente para leer detalles y tablas pequeñas
+// Analyst: Irá al detalle para extraer cantidades y dimensiones
 const visionAnalystModel = new ChatOpenAI({
-  modelName: "gpt-4o",
-  maxTokens: 3000,
+  modelName: "gpt-4.1-2025-04-14",
+  maxTokens: 4000,
   temperature: 0,
 });
 
@@ -44,7 +44,8 @@ export async function convertPdfToImages(filePath: string): Promise<Uint8Array[]
     format: 'png',
     out_dir: outputDir,
     out_prefix: baseName,
-    page: null // null = todas las páginas
+    page: null, // null = todas las páginas
+    scale: 2048, // Mejor resolución de cada imagen para OCR
   };
 
   try {
@@ -121,21 +122,29 @@ export async function extractItemsFromPage(imageBuffer: Uint8Array, pageNum: num
     content: [
       {
         type: "text",
-        text: `You are an expert Estimator for Cemtech (Concrete/Sitework).
-        Analyze this image (Page ${pageNum}). Extract QUANTIFIABLE line items for a quote.
-        
-        Focus on:
-        1. Concrete Slabs, Sidewalks, Curbs (measurements or labels).
-        2. Demolition notes.
-        3. Grading/Excavation.
+        text: `You are an expert Senior Estimator for Cemtech (Concrete/Sitework).
+        Analyze this High-Resolution plan (Page ${pageNum}) to perform a QUANTITY TAKEOFF.
+
+        Your goal is to find **NUMBERS** and **DIMENSIONS**. Do not just list items.
+
+        STRATEGY TO FIND QUANTITIES:
+        1. **Look for TABLES/SCHEDULES**: Architects often put a "Material Quantity Schedule" or "Finish Schedule" on the plan. Extract quantities directly from there if valid.
+        2. **Look for DIMENSION LINES**: If you see a Concrete Slab, look for text like "20' x 40'" or "2500 SF".
+        3. **Calculate if Simple**: If you see a rectangular slab with dimensions clearly labeled (e.g., 10' and 20'), calculate the area (200 sqft) yourself.
+        4. **Look for THICKNESS**: Look for notes like "4 inch slab", "6 inch depth" to add to notes.
+
+        FORMAT INSTRUCTIONS:
+        - If you find a dimension (e.g., 100 LF of Curb), put '100' in quantity and 'lf' in unit.
+        - If you find an area (e.g., 500 SF of Sidewalk), put '500' in quantity and 'sqft' in unit.
+        - **CRITICAL**: If you definitively CANNOT find a number, put Quantity: 1, Unit: "ls" (Lump Sum), and in 'notes' explicitly say: "Dimensions not found on plan, requires manual scaling."
 
         Return a JSON ARRAY. Format:
         [
           {
-            "description": "Exact text from plan or derived name",
-            "quantity": 1, (Number. If unknown/needs calc, put 1 and mention dimensions in notes)
-            "unit": "ls", (ls, sqft, lf, cy, ea)
-            "notes": "Page ${pageNum}. Specs found: 4000psi, 6 inch depth, etc."
+            "description": "Concrete Slab (Interior)",
+            "quantity": 2500,
+            "unit": "sqft",
+            "notes": "Calculated from dimensions 50x50 found on Grid A-C. Spec: 4000psi"
           }
         ]
         
