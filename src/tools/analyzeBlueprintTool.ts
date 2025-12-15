@@ -1,17 +1,31 @@
 // src/tools/analyzeBlueprintTool.ts
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
-import { convertPdfToImages, isPageRelevant, extractItemsFromPage, ExtractedItem } from "../utils/blueprintProcessor.js";
+import fs from "fs";
+import { convertPdfToImages, isPageRelevant, extractItemsFromPage, ExtractedItem, downloadPdfFromUrl } from "../utils/blueprintProcessor.js";
 
 const schema = z.object({
-  filePath: z.string().describe("The relative path to the PDF file (e.g., 'public/quotes/bid_set.pdf')."),
+  filePath: z.string().optional().describe("The relative path to the PDF file (e.g., 'public/quotes/bid_set.pdf'). Use this if the file is local."),
+  pdfUrl: z.string().optional().describe("The URL of the PDF file to download and analyze. Use this if the file is hosted remotely."),
 });
 
 export const analyzeBlueprintTool = tool(
-  async ({ filePath }) => {
+  async ({ filePath, pdfUrl }) => {
+    let targetPath = filePath;
+    let isTempFile = false;
+
     try {
+      if (pdfUrl) {
+        targetPath = await downloadPdfFromUrl(pdfUrl);
+        isTempFile = true;
+      }
+
+      if (!targetPath) {
+        return "Error: You must provide either 'filePath' or 'pdfUrl'.";
+      }
+
       // 1. Convertir
-      const images = await convertPdfToImages(filePath);
+      const images = await convertPdfToImages(targetPath);
       
       if (images.length === 0) return "Error: No pages found in PDF.";
 
@@ -46,6 +60,15 @@ export const analyzeBlueprintTool = tool(
 
     } catch (error: any) {
       return `Error analyzing blueprint: ${error.message}`;
+    } finally {
+      // Cleanup temp file if downloaded
+      if (isTempFile && targetPath && fs.existsSync(targetPath)) {
+        try {
+          fs.unlinkSync(targetPath);
+        } catch (e) {
+          console.error("Error deleting temp file:", e);
+        }
+      }
     }
   },
   {

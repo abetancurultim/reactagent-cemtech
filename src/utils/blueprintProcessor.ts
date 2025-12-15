@@ -2,6 +2,7 @@
 import * as pdfPoppler from 'pdf-poppler';
 import path from 'path';
 import fs from 'fs';
+import axios from 'axios';
 import { ChatOpenAI } from "@langchain/openai";
 import { HumanMessage } from "@langchain/core/messages";
 import dotenv from "dotenv";
@@ -155,4 +156,33 @@ export async function extractItemsFromPage(imageBuffer: Uint8Array, pageNum: num
     console.error(`Failed to extract from page ${pageNum}`, e);
     return [];
   }
+}
+
+/**
+ * Descarga un PDF desde una URL y lo guarda temporalmente.
+ */
+export async function downloadPdfFromUrl(url: string): Promise<string> {
+  const response = await axios({
+    url,
+    method: 'GET',
+    responseType: 'stream',
+  });
+
+  // Asegurar que el directorio exista
+  const outputDir = path.resolve('public/quotes');
+  if (!fs.existsSync(outputDir)) {
+    fs.mkdirSync(outputDir, { recursive: true });
+  }
+
+  const tempFileName = `download_${Date.now()}.pdf`;
+  const tempFilePath = path.join(outputDir, tempFileName);
+  
+  const writer = fs.createWriteStream(tempFilePath);
+
+  response.data.pipe(writer);
+
+  return new Promise((resolve, reject) => {
+    writer.on('finish', () => resolve(tempFilePath));
+    writer.on('error', reject);
+  });
 }

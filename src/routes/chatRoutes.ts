@@ -1260,9 +1260,20 @@ router.post("/cemtech/receive-message", async (req, res) => {
     };
 
     let agentOutput;
+    
+    // Si hay un documento adjunto, añadir la URL al mensaje para que el agente la vea
+    if (documentUrl) {
+      incomingMessage += `\n\n[Archivo adjunto disponible en: ${documentUrl}]`;
+      console.log("📎 Document URL appended to message for agent context");
+    }
+
     if (incomingImage) {
       const message = new HumanMessage({
         content: [
+          {
+            type: "text",
+            text: incomingMessage // Incluir el texto del mensaje junto con la imagen
+          },
           {
             type: "image_url",
             image_url: { url: incomingImage },
