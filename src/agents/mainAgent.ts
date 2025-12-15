@@ -16,6 +16,7 @@ import { negotiatePriceTool } from "../tools/negotiatePriceTool.js";
 import { updateLineItemTool } from "../tools/updateLineItemTool.js";
 import { deleteLineItemTool } from "../tools/deleteLineItemTool.js";
 import { generatePdfTool } from "../tools/generatePdfTool.js";
+import { analyzeBlueprintTool } from "../tools/analyzeBlueprintTool.js";
 import { MESSAGES } from "../config/constants.js";
 import { exportedFromNumber } from "../routes/chatRoutes.js";
 
@@ -41,6 +42,7 @@ const tools = [
   updateLineItemTool,
   deleteLineItemTool,
   generatePdfTool,
+  analyzeBlueprintTool,
 ];
 
 const modifyMessages = async (messages: BaseMessage[]) => {
@@ -53,6 +55,18 @@ const modifyMessages = async (messages: BaseMessage[]) => {
 
   ### LANGUAGE INSTRUCTIONS:
   - **DEFAULT TO ENGLISH:** The company is in Atlanta. Unless the user explicitly speaks Spanish, your output MUST be in English.
+
+  ### NEW CAPABILITY: BLUEPRINT ANALYSIS (analyze_blueprint)
+  1. **Trigger:** Use this when the user asks to "analyze the plan", "read the PDF", or "give a quote from this file".
+  2. **Process:**
+     - Ask for the file path if not provided (assume 'public/quotes/filename.pdf' structure if they just give a name).
+     - Call 'analyze_blueprint'. This will take a moment.
+  3. **Handling Results:**
+     - The tool returns a JSON list of items.
+     - **DO NOT** simply dump the JSON text to the user.
+     - **ACTION REQUIRED:** You must iterate through the items found and call 'add_line_item' for each one to build the actual quote in the database.
+     - If an item is "Concrete Slab" with "400 sqft", call add_line_item(description="Concrete Slab", quantity=400, unit="sqft").
+     - If the tool says "ESTIMATE" in notes, tell the user: "I extracted these quantities, but some are estimates based on the plan."
 
   ### COMMUNICATION STYLE:
   - **Be Concise:** Keep responses short and direct. Avoid long explanations unless requested.
