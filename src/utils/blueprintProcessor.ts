@@ -3,6 +3,7 @@ import * as pdfPoppler from 'pdf-poppler';
 import path from 'path';
 import fs from 'fs';
 import axios from 'axios';
+import pdfParse from 'pdf-parse/lib/pdf-parse.js';
 import { ChatOpenAI } from "@langchain/openai";
 import { HumanMessage } from "@langchain/core/messages";
 import dotenv from "dotenv";
@@ -31,6 +32,25 @@ export interface ExtractedItem {
   notes: string;
 }
 
+//! De momento esto no se usará porque llena inmediatamente la ventana de contexto del modelo.
+export async function getPdfPageText(filePath: string, pageNum: number): Promise<string> {
+  try {
+    const dataBuffer = fs.readFileSync(filePath);
+    const data = await pdfParse(dataBuffer);
+    
+    // pdf-parse devuelve todo el texto junto. 
+    // Separarlo por páginas es complejo con esta librería simple, 
+    // pero para planos técnicos, el texto suele venir en bloques.
+    // Una alternativa más precisa página a página es usar una librería como 'pdfjs-dist',
+    
+    // NOTA: Para este MVP, pasaremos el texto completo del PDF como referencia.
+    return data.text; 
+  } catch (e) {
+    console.error("Error reading PDF text layer:", e);
+    return "";
+  }
+}
+
 /**
  * Convierte PDF a imágenes usando Poppler (Compatible con Railway + Windows)
  */
@@ -45,7 +65,7 @@ export async function convertPdfToImages(filePath: string): Promise<Uint8Array[]
     out_dir: outputDir,
     out_prefix: baseName,
     page: null, // null = todas las páginas
-    scale: 2048, // Mejor resolución de cada imagen para OCR
+    scale: 3072, // Mejor resolución de cada imagen para OCR
   };
 
   try {
@@ -122,33 +142,53 @@ export async function extractItemsFromPage(imageBuffer: Uint8Array, pageNum: num
     content: [
       {
         type: "text",
-        text: `You are an expert Senior Estimator for Cemtech (Concrete/Sitework).
-        Analyze this High-Resolution plan (Page ${pageNum}) to perform a QUANTITY TAKEOFF.
+        text: `
+          You are a Senior Estimator for 'Cemtech Enterprise Inc'.
+          We specialize in: **Concrete Replacements, Retaining Walls, Poured Walls, and Monolithic Slabs.**
+    
+          YOUR MISSION: Extract distinct, billable line items for a quote based on this plan (Page ${pageNum}).
+    
+          ### CRITICAL SCOPE RULES (READ CAREFULLY):
+          1. **"REPLACEMENT" MINDSET:** Look for "Existing to Remain" vs "New". Do NOT quote existing concrete unless the notes say "Remove and Replace" or "Saw cut and Pour back".
+          2. **SITE WORK IS KEY:** Look for exterior items:
+            - **Bollards:** Count them (Unit: EA).
+            - **Curbs/Gutter:** New or Repair (Unit: LF).
+            - **Sidewalks/Ramps:** New or Repair (Unit: SQFT).
+            - **Dumpster Pads:** (Unit: SQFT or LS).
+          3. **INTERIOR RENOVATION:** Look for "Trenching", "Infill", "Equipment Pads" (for new machinery). Ignore the main building slab if it exists.
+    
+          ### HOW TO EXTRACT:
+          - **Read the Keyed Notes:** If Note 155 says "Saw cut 137 sqft", extract exactly "137" and "sqft". This is the most accurate source.
+          - **Visual Estimation:** If a note points to a hatched area saying "New Concrete", estimate that specific area.
+          - **Retaining Walls:** If found, estimate Length (LF) or Face Area (SQFT).
+    
+          ### OUTPUT FORMAT:
+          Return a JSON ARRAY. If no *billable* work is found, return [].
+    
+          Example Output:
+          [
+            {
+              "description": "Front Facade - Saw cut, demo and pour back sidewalk (Note 155)",
+              "quantity": 137,
+              "unit": "sqft",
+              "notes": "Explicitly stated in Note 155. Includes new footing."
+            },
+            {
+              "description": "Install Pipe Bollards (Labor Only)",
+              "quantity": 7,
+              "unit": "ea",
+              "notes": "Standard 6 inch bollards near entrance."
+            },
+            {
+              "description": "Pour New Equipment Pad",
+              "quantity": 64,
+              "unit": "sqft",
+              "notes": "6 inch thick pad for HVAC unit."
+            }
+          ]
 
-        Your goal is to find **NUMBERS** and **DIMENSIONS**. Do not just list items.
-
-        STRATEGY TO FIND QUANTITIES:
-        1. **Look for TABLES/SCHEDULES**: Architects often put a "Material Quantity Schedule" or "Finish Schedule" on the plan. Extract quantities directly from there if valid.
-        2. **Look for DIMENSION LINES**: If you see a Concrete Slab, look for text like "20' x 40'" or "2500 SF".
-        3. **Calculate if Simple**: If you see a rectangular slab with dimensions clearly labeled (e.g., 10' and 20'), calculate the area (200 sqft) yourself.
-        4. **Look for THICKNESS**: Look for notes like "4 inch slab", "6 inch depth" to add to notes.
-
-        FORMAT INSTRUCTIONS:
-        - If you find a dimension (e.g., 100 LF of Curb), put '100' in quantity and 'lf' in unit.
-        - If you find an area (e.g., 500 SF of Sidewalk), put '500' in quantity and 'sqft' in unit.
-        - **CRITICAL**: If you definitively CANNOT find a number, put Quantity: 1, Unit: "ls" (Lump Sum), and in 'notes' explicitly say: "Dimensions not found on plan, requires manual scaling."
-
-        Return a JSON ARRAY. Format:
-        [
-          {
-            "description": "Concrete Slab (Interior)",
-            "quantity": 2500,
-            "unit": "sqft",
-            "notes": "Calculated from dimensions 50x50 found on Grid A-C. Spec: 4000psi"
-          }
-        ]
-        
-        Output ONLY valid JSON. No markdown.`
+          Output ONLY valid JSON. No markdown.
+        `
       },
       {
         type: "image_url",
