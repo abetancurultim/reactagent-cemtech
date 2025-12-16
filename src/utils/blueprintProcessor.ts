@@ -3,6 +3,7 @@ import * as pdfPoppler from 'pdf-poppler';
 import path from 'path';
 import fs from 'fs';
 import axios from 'axios';
+import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import pdfParse from 'pdf-parse/lib/pdf-parse.js';
 import { ChatOpenAI } from "@langchain/openai";
 import { HumanMessage } from "@langchain/core/messages";
@@ -136,9 +137,34 @@ export async function isPageRelevant(imagePath: string, pageIndex: number): Prom
 }
 
 /**
+ * Carga el documento PDF en memoria para extracción de texto.
+ */
+export async function loadPdfDocument(filePath: string): Promise<pdfjsLib.PDFDocumentProxy> {
+  const dataBuffer = fs.readFileSync(filePath);
+  const uint8Array = new Uint8Array(dataBuffer);
+  const loadingTask = pdfjsLib.getDocument({ data: uint8Array });
+  return loadingTask.promise;
+}
+
+/**
+ * Extrae el texto de una página específica.
+ */
+export async function getTextFromPage(pdfDoc: pdfjsLib.PDFDocumentProxy, pageNum: number): Promise<string> {
+  try {
+    const page = await pdfDoc.getPage(pageNum);
+    const textContent = await page.getTextContent();
+    // Unimos los items de texto. A veces es útil añadir saltos de línea, pero un espacio suele bastar.
+    return textContent.items.map((item: any) => item.str).join(' ');
+  } catch (e) {
+    console.error(`Error extracting text from page ${pageNum}:`, e);
+    return "";
+  }
+}
+
+/**
  * Fase 2: Extraer datos cuantificables
  */
-export async function extractItemsFromPage(imagePath: string, pageNum: number): Promise<ExtractedItem[]> {
+export async function extractItemsFromPage(imagePath: string, pageNum: number, pageText: string = ""): Promise<ExtractedItem[]> {
   const imageBuffer = fs.readFileSync(imagePath);
   const imageBase64 = imageBuffer.toString('base64');
 
@@ -150,6 +176,11 @@ export async function extractItemsFromPage(imagePath: string, pageNum: number): 
     We specialize in: **Concrete Replacements, Retaining Walls, Poured Walls, and Monolithic Slabs.**
     
     YOUR MISSION: Extract distinct, billable line items for a quote based on this plan (Page ${pageNum}).
+
+    Here is the raw text content extracted from this page to help you read small notes or blurry text:
+    """
+    ${pageText}
+    """
     
     ### CRITICAL SCOPE RULES (READ CAREFULLY):
     1. **"REPLACEMENT" MINDSET:** Look for "Existing to Remain" vs "New". Do NOT quote existing concrete unless the notes say "Remove and Replace" or "Saw cut and Pour back".
