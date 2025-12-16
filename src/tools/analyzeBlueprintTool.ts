@@ -5,75 +5,92 @@ import fs from "fs";
 import { convertPdfToImages, isPageRelevant, extractItemsFromPage, ExtractedItem, downloadPdfFromUrl } from "../utils/blueprintProcessor.js";
 
 const schema = z.object({
-  filePath: z.string().optional().describe("The relative path to the PDF file (e.g., 'public/quotes/bid_set.pdf'). Use this if the file is local."),
-  pdfUrl: z.string().optional().describe("The URL of the PDF file to download and analyze. Use this if the file is hosted remotely."),
+  filePath: z.string().optional().describe("The relative path to the PDF file (e.g., 'public/quotes/bid_set.pdf')."),
+  pdfUrl: z.string().optional().describe("The URL of the PDF to analyze."),
 });
 
 export const analyzeBlueprintTool = tool(
   async ({ filePath, pdfUrl }) => {
     let targetPath = filePath;
     let isTempFile = false;
+    let imagePaths: string[] = [];
 
     try {
+      // 1. Obtener Archivo
       if (pdfUrl) {
         targetPath = await downloadPdfFromUrl(pdfUrl);
         isTempFile = true;
       }
 
-      if (!targetPath) {
-        return "Error: You must provide either 'filePath' or 'pdfUrl'.";
+      if (!targetPath || !fs.existsSync(targetPath)) {
+        return "Error: File not found or no path provided.";
       }
 
-      // 1. Convertir
-      const images = await convertPdfToImages(targetPath);
+      // 2. Convertir a Imágenes (Alta Resolución)
+      imagePaths = await convertPdfToImages(targetPath);
       
-      if (images.length === 0) return "Error: No pages found in PDF.";
+      if (imagePaths.length === 0) return "Error: No pages extracted from PDF.";
 
-      const relevantItems: ExtractedItem[] = [];
-      let processedPages = 0;
+      const relevantData: ExtractedItem[] = [];
+      let scannedPages = 0;
+      let relevantPagesCount = 0;
 
-      // 2. Loop Map-Reduce
-      // Limitamos a max 15 páginas relevantes para proteger tokens/costos por ahora
-      for (let i = 0; i < images.length; i++) {
-        const isRelevant = await isPageRelevant(images[i], i);
+      // 3. Map-Reduce Loop
+      // Analizamos máximo 100 páginas para control de presupuesto
+      const MAX_PAGES_TO_ANALYZE = 100;
+
+      for (const imgPath of imagePaths) {
+        if (scannedPages >= MAX_PAGES_TO_ANALYZE) break;
+        
+        // Fase Map: ¿Es relevante?
+        const isRelevant = await isPageRelevant(imgPath, scannedPages);
         
         if (isRelevant) {
-          processedPages++;
-          const items = await extractItemsFromPage(images[i], i + 1);
-          relevantItems.push(...items);
-          
-          if (processedPages >= 15) break; // Safety break
+          relevantPagesCount++;
+          // Fase Reduce: Extraer datos
+          const items = await extractItemsFromPage(imgPath, scannedPages + 1);
+          relevantData.push(...items);
         }
+        
+        scannedPages++;
       }
 
-      if (relevantItems.length === 0) {
-        return "Analysis finished. PDF was read, but no relevant Concrete/Sitework pages were identified.";
+      // 4. Limpieza de imágenes temporales
+      imagePaths.forEach(p => {
+        try { fs.unlinkSync(p); } catch(e) {}
+      });
+
+      if (relevantData.length === 0) {
+        return JSON.stringify({
+          status: "completed_empty",
+          message: "Scanned pages but found no specific Concrete/Site work items."
+        });
       }
 
-      // 3. Retornar resumen para el Agente
+      // 5. Retorno estructurado para el Agente
       return JSON.stringify({
         status: "success",
-        total_pages_scanned: images.length,
-        relevant_pages_found: processedPages,
-        items_extracted: relevantItems
+        relevant_pages: relevantPagesCount,
+        total_scanned: scannedPages,
+        items: relevantData
       }, null, 2);
 
     } catch (error: any) {
-      return `Error analyzing blueprint: ${error.message}`;
+      return `Error in blueprint analysis: ${error.message}`;
     } finally {
-      // Cleanup temp file if downloaded
+      // Cleanup PDF temporal
       if (isTempFile && targetPath && fs.existsSync(targetPath)) {
-        try {
-          fs.unlinkSync(targetPath);
-        } catch (e) {
-          console.error("Error deleting temp file:", e);
-        }
+        try { fs.unlinkSync(targetPath); } catch (e) {}
       }
+      // Cleanup imágenes si falló antes
+      imagePaths.forEach(p => {
+        if(fs.existsSync(p)) try { fs.unlinkSync(p); } catch(e) {}
+      });
     }
   },
   {
     name: "analyze_blueprint",
-    description: "VISION TOOL. Reads a construction PDF plan. Filters relevant pages (Concrete/Demo) and extracts line items automatically. Returns a JSON list of items to be added to the quote.",
+    description: "VISION ESTIMATOR. Scans PDF blueprints. Filters for Concrete/Civil/Demo pages only. Extracts quantities, notes, and dimensions. Returns JSON items.",
     schema,
   }
 );

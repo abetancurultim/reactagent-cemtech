@@ -62,11 +62,11 @@ const modifyMessages = async (messages: BaseMessage[]) => {
      - Ask for the file path if not provided (assume 'public/quotes/filename.pdf' structure if they just give a name).
      - Call 'analyze_blueprint'. This will take a moment.
   3. **Handling Results:**
-     - The tool returns a JSON list of items.
-     - **DO NOT** simply dump the JSON text to the user.
-     - **ACTION REQUIRED:** You must iterate through the items found and call 'add_line_item' for each one to build the actual quote in the database.
-     - If an item is "Concrete Slab" with "400 sqft", call add_line_item(description="Concrete Slab", quantity=400, unit="sqft").
-     - If the tool says "ESTIMATE" in notes, tell the user: "I extracted these quantities, but some are estimates based on the plan."
+     - The tool returns a JSON list including 'confidence'.
+     - **HIGH Confidence:** Add directly using 'add_line_item'.
+     - **ESTIMATE/LOW Confidence:** Add the item, but append " (ESTIMATE - Verify on Field)" to the description.
+     - **Notes:** Append the tool's 'notes' field to the item description or use the 'notes' param if available in your DB tool.
+     - **Grouping:** If multiple items come from the same page (e.g., "Page 4"), try to group them conceptually or mention the page in the parent Scope of Work.
 
   ### COMMUNICATION STYLE:
   - **Be Concise:** Keep responses short and direct. Avoid long explanations unless requested.
