@@ -7,6 +7,7 @@ import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import pdfParse from 'pdf-parse/lib/pdf-parse.js';
 import { ChatOpenAI } from "@langchain/openai";
 import { HumanMessage } from "@langchain/core/messages";
+import { getPageTextWithCoords } from './pdfDataMiner.js';
 import { z } from "zod";
 import dotenv from "dotenv";
 
@@ -164,23 +165,48 @@ export async function getTextFromPage(pdfDoc: pdfjsLib.PDFDocumentProxy, pageNum
 /**
  * Fase 2: Extraer datos cuantificables
  */
-export async function extractItemsFromPage(imagePath: string, pageNum: number, pageText: string = ""): Promise<ExtractedItem[]> {
+export async function extractItemsFromPage(imagePath: string, originalPdfPath: string, pageNum: number): Promise<ExtractedItem[]> {
   const imageBuffer = fs.readFileSync(imagePath);
   const imageBase64 = imageBuffer.toString('base64');
 
-  // Usamos withStructuredOutput para forzar JSON estricto compatible con Zod
+  const textElements = await getPageTextWithCoords(originalPdfPath, pageNum - 1);
+
+  // DEBUG: Ver qué está leyendo realmente
+  console.log("--- DEBUG TEXT EXTRACTED ---");
+  console.log(textElements.filter(t => t.text.length > 3).slice(0, 20));
+  console.log("----------------------------");
+  
+  // Filtrar solo textos que parezcan medidas o notas importantes
+  const relevantTexts = textElements
+    .filter(t => /[\d'"]|CONC|REM|EXIST|NEW/i.test(t.text)) 
+    .map(t => `[Text: "${t.text}" at X:${t.x.toFixed(1)}, Y:${t.y.toFixed(1)}]`)
+    .join("\n");
+
   const structuredLlm = visionAnalystModel.withStructuredOutput(extractionSchema);
 
  const prompt = `
     You are a Senior Estimator for 'Cemtech Enterprise Inc'.
-    We specialize in: **Concrete Replacements, Retaining Walls, Poured Walls, and Monolithic Slabs.**
+    We specialize in Concrete and Site Work.
     
-    YOUR MISSION: Extract distinct, billable line items for a quote based on this plan (Page ${pageNum}).
+    YOUR MISSION: Extract distinct, billable line items.
+    
+    ### SOURCE DATA (HYBRID APPROACH):
+    1. **VISUAL:** Look at the image for scope (where is the sidewalk?).
+    2. **TEXTUAL (CRITICAL):** I have extracted the raw text from the PDF file below.
+    
+    DETECTED TEXT LAYOUT (Text @ X,Y):
+    """
+    ${relevantTexts}
+    """
 
-    Here is the raw text content extracted from this page to help you read small notes or blurry text:
-    """
-    ${pageText}
-    """
+    ### HOW TO FIND QUANTITIES (Priority Order):
+    1. **Direct Labels:** Look for text near the visual object (e.g., "4\" CONC WALK" near the drawing).
+    2. **Reference Notes:** If the drawing says "See Note 4" or has a tag like "C1", LOOK for "Note 4" or "C1" in the text list to find the details.
+    3. **Quantity Tables (Schedules):** If you see a "Quantities" table in the text list (e.g., "SIDEWALK... 1,250 SF"), USE THAT VALUE. Do not rely on visual estimation if a table exists.
+    
+    ### RULES:
+    - If you find a text number matching the scope, set confidence to "HIGH".
+    - If you only see the drawing but no text numbers, keep as "ESTIMATE".
     
     ### CRITICAL SCOPE RULES (READ CAREFULLY):
     1. **"REPLACEMENT" MINDSET:** Look for "Existing to Remain" vs "New". Do NOT quote existing concrete unless the notes say "Remove and Replace" or "Saw cut and Pour back".

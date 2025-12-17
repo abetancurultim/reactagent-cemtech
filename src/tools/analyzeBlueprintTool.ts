@@ -47,8 +47,8 @@ export const analyzeBlueprintTool = tool(
         
         if (isRelevant) {
           relevantPagesCount++;
-          // Fase Reduce: Extraer datos
-          const items = await extractItemsFromPage(imgPath, scannedPages + 1);
+          // PASAMOS targetPath (el PDF original) ADEMÁS de imgPath
+          const items = await extractItemsFromPage(imgPath, targetPath, scannedPages + 1);
           relevantData.push(...items);
         }
         
